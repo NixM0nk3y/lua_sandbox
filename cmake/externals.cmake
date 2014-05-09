@@ -77,6 +77,16 @@ externalproject_add(
 )
 add_dependencies(lpeg-0_12 ${LUA_PROJECT})
 
+externalproject_add(
+    libinjection
+    GIT_REPOSITORY https://github.com/NixM0nk3y/libinjection
+    GIT_TAG "master"
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND cd  ${EP_BASE}/Source/libinjection/lua && make
+    INSTALL_COMMAND cmake -E copy ${EP_BASE}/Source/libinjection/lua/libinjection.a ${EP_BASE}/lib/libinjection.a
+)
+add_dependencies(libinjection ${LUA_PROJECT})
+
 if(MSVC)
     set(CJSON_PATCH_FILE "lua-cjson-2_1_0.win.patch")
 endif()

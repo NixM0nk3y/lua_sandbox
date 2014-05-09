@@ -9,7 +9,7 @@ set(CPACK_PACKAGE_VERSION_MAJOR 0)
 set(CPACK_PACKAGE_VERSION_MINOR 6)
 set(CPACK_PACKAGE_VERSION_PATCH 3)
 
-option(LUA_JIT "Enable LuaJIT" off)
+option(LUA_JIT "Enable LuaJIT" on)
 if(LUA_JIT)
     add_definitions(-DLUA_JIT)
 endif()
