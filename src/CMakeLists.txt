@@ -46,6 +46,7 @@ else()
     "${EP_BASE}/lib/liblua.a"
     "${EP_BASE}/lib/liblpeg.a"
     "${EP_BASE}/lib/libcjson.a"
+    "${EP_BASE}/lib/libinjection.a"
     ${LINK_DL} -lm
     )
     add_library(luasandbox STATIC ${LUA_SANDBOX_SRC})
@@ -55,7 +56,7 @@ endif()
 
 target_link_libraries(luasandbox ${LUA_SANDBOX_LIBS})
 
-add_dependencies(luasandbox ${LUA_PROJECT} lpeg-0_12 lua-cjson-2_1_0)
+add_dependencies(luasandbox ${LUA_PROJECT} lpeg-0_12 lua-cjson-2_1_0 libinjection)
 install(TARGETS luasandbox DESTINATION lib)
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/include/" DESTINATION include)
 install(DIRECTORY "${LUA_INCLUDE_DIR}/" DESTINATION include)
