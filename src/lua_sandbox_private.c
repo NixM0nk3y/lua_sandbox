@@ -305,6 +305,7 @@ int output(lua_State* lua)
 
 LUALIB_API int (luaopen_cjson_safe)(lua_State* L);
 LUALIB_API int (luaopen_lpeg)(lua_State* L);
+LUALIB_API int (luaopen_libinjection)(lua_State* L);
 
 int require_library(lua_State* lua)
 {
@@ -340,6 +341,8 @@ int require_library(lua_State* lua)
     load_library(lua, name, luaopen_circular_buffer, disable_none);
   } else if (strcmp(name, "lpeg") == 0) {
     load_library(lua, name, luaopen_lpeg, disable_none);
+  } else if (strcmp(name, "injection") == 0) {
+    load_library(lua, name, luaopen_libinjection, disable_none);
   } else if (strcmp(name, "cjson") == 0) {
     const char* disable[] = { "encode",  "encode_sparse_array",
       "encode_max_depth", "encode_number_precision", "encode_keep_buffer",
