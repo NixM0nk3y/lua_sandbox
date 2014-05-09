@@ -341,7 +341,7 @@ int require_library(lua_State* lua)
     load_library(lua, name, luaopen_circular_buffer, disable_none);
   } else if (strcmp(name, "lpeg") == 0) {
     load_library(lua, name, luaopen_lpeg, disable_none);
-  } else if (strcmp(name, "injection") == 0) {
+  } else if (strcmp(name, "libinjection") == 0) {
     load_library(lua, name, luaopen_libinjection, disable_none);
   } else if (strcmp(name, "cjson") == 0) {
     const char* disable[] = { "encode",  "encode_sparse_array",
