@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/// @brief Lua sandbox unit tests @file
+/** @brief Lua sandbox unit tests @file */
 
 #include "lua_sandbox.h"
 
@@ -444,6 +444,7 @@ static char* test_output()
   return NULL;
 }
 
+
 static char* test_output_errors()
 {
   const char* tests[] =
@@ -515,6 +516,16 @@ static char* test_cbuf_errors()
     , "process() lua/circular_buffer_errors.lua:77: fromstring() too few values: 0, expected 2"
     , "process() lua/circular_buffer_errors.lua:80: fromstring() too few values: 0, expected 2"
     , "process() lua/circular_buffer_errors.lua:83: fromstring() too many values, more than: 2"
+    , "process() lua/circular_buffer_errors.lua:86: bad argument #-1 to 'mannwhitneyu' (incorrect number of arguments)"
+    , "process() lua/circular_buffer_errors.lua:89: bad argument #1 to 'mannwhitneyu' (number expected, got nil)"
+    , "process() lua/circular_buffer_errors.lua:92: bad argument #1 to 'mannwhitneyu' (column out of range)"
+    , "process() lua/circular_buffer_errors.lua:95: bad argument #3 to 'mannwhitneyu' (ranges must not overlap)"
+    , "process() lua/circular_buffer_errors.lua:98: bad argument #3 to 'mannwhitneyu' (end_1 must be >= start_1)"
+    , "process() lua/circular_buffer_errors.lua:101: bad argument #5 to 'mannwhitneyu' (end_2 must be >= start_2)"
+    , "process() lua/circular_buffer_errors.lua:104: bad argument #-1 to 'mannwhitneyu' (too many arguments)"
+    , "process() lua/circular_buffer_errors.lua:107: bad argument #6 to 'mannwhitneyu' (use_continuity must be a boolean)"
+    , "process() lua/circular_buffer_errors.lua:110: bad argument #-1 to 'get_header' (incorrect number of arguments)"
+    , "process() lua/circular_buffer_errors.lua:113: bad argument #1 to 'get_header' (column out of range)"
     , NULL
   };
 
@@ -591,7 +602,7 @@ static char* test_cbuf()
   mu_assert(strcmp(outputs[3], written_data) == 0, "received: %s",
             written_data);
 
-  for (int i = 1; i < 8; ++i) {
+  for (int i = 1; i < 18; ++i) {
     result = report(sb, i);
     mu_assert(result == 0, "report() test: %d received: %d error: %s", i, result, lsb_get_error(sb));
   }
@@ -764,9 +775,20 @@ static char* test_lpeg()
 static char* test_lpeg_clf()
 {
   const char* tests[] = {
-    "{\"body_bytes_sent\":{\"value\":0,\"representation\":\"B\"},\"remote_addr\":\"127.0.0.1\",\"time\":1392050801000,\"http_user_agent\":\"Mozilla\\/5.0 (X11; Ubuntu; Linux x86_64; rv:26.0) Gecko\\/20100101 Firefox\\/26.0\",\"request\":\"GET \\/ HTTP\\/1.1\",\"remote_user\":\"-\",\"status\":304,\"http_referer\":\"-\"}\n"
-    , "{\"body_bytes_sent\":{\"value\":0,\"representation\":\"B\"},\"remote_addr\":\"127.0.0.1\",\"time\":1391794831755,\"status\":304,\"http_user_agent\":\"Mozilla\\/5.0 (X11; Ubuntu; Linux x86_64; rv:26.0) Gecko\\/20100101 Firefox\\/26.0\",\"request\":\"GET \\/ HTTP\\/1.1\",\"http_referer\":\"-\"}\n"
+    "ok"
+    , "{\"body_bytes_sent\":{\"value\":0,\"representation\":\"B\"},\"remote_addr\":{\"value\":\"127.0.0.1\",\"representation\":\"ipv4\"},\"time\":1392050801000,\"http_user_agent\":\"Mozilla\\/5.0 (X11; Ubuntu; Linux x86_64; rv:26.0) Gecko\\/20100101 Firefox\\/26.0\",\"request\":\"GET \\/ HTTP\\/1.1\",\"remote_user\":\"-\",\"status\":304,\"http_referer\":\"-\"}\n"
+    , "{\"body_bytes_sent\":{\"value\":0,\"representation\":\"B\"},\"remote_addr\":{\"value\":\"127.0.0.1\",\"representation\":\"ipv4\"},\"time\":1391794831755,\"status\":304,\"http_user_agent\":\"Mozilla\\/5.0 (X11; Ubuntu; Linux x86_64; rv:26.0) Gecko\\/20100101 Firefox\\/26.0\",\"request\":\"GET \\/ HTTP\\/1.1\",\"http_referer\":\"-\"}\n"
     , "ok"
+    , "ok"
+    , "{\"server_addr\":{\"value\":\"::1\",\"representation\":\"ipv6\"},\"pid\":1234,\"total_length\":{\"value\":809,\"representation\":\"B\"},\"server_port\":80,\"request_length\":{\"value\":311,\"representation\":\"B\"},\"connection_requests\":2,\"connection_status\":\"+\",\"body_bytes_sent\":{\"value\":235,\"representation\":\"B\"},\"remote_addr\":{\"value\":\"127.0.0.1\",\"representation\":\"ipv4\"},\"time\":1395330986000,\"response_length\":{\"value\":498,\"representation\":\"B\"},\"request_time\":{\"value\":0,\"representation\":\"s\"},\"request_filename\":\"test.txt\",\"status\":404,\"server_name\":{\"value\":\"example.com\",\"representation\":\"hostname\"}}\n"
+    , "{\"remote_addr\":{\"value\":\"127.0.0.1\",\"representation\":\"ipv4\"},\"time\":1392050801000,\"response_length\":{\"value\":0,\"representation\":\"B\"},\"request\":\"GET \\/ HTTP\\/1.1\",\"remote_user\":\"-\",\"status\":304}\n"
+    , "{\"remote_user\":\"-\",\"server_port\":80,\"http_referer\":\"-\",\"remote_addr\":{\"value\":\"127.0.0.1\",\"representation\":\"ipv4\"},\"time\":1395344314000,\"response_length\":{\"value\":492,\"representation\":\"B\"},\"request\":\"GET \\/ HTTP\\/1.1\",\"http_user_agent\":\"Mozilla\\/5.0 (X11; Ubuntu; Linux x86_64; rv:27.0) Gecko\\/20100101 Firefox\\/27.0\",\"status\":404,\"server_name\":{\"value\":\"127.0.1.1\",\"representation\":\"ipv4\"}}\n"
+    , "{\"http_user_agent\":\"Mozilla\\/5.0 (X11; Ubuntu; Linux x86_64; rv:27.0) Gecko\\/20100101 Firefox\\/27.0\",\"remote_addr\":{\"value\":\"127.0.0.1\",\"representation\":\"ipv4\"},\"time\":1395344397000,\"response_length\":{\"value\":492,\"representation\":\"B\"},\"request\":\"GET \\/ HTTP\\/1.1\",\"remote_user\":\"-\",\"status\":404,\"http_referer\":\"-\"}\n"
+    , "{\"uri\":\"\\/\",\"http_referer\":\"-\"}\n"
+    , "{\"Fields\":{\"tid\":0},\"Pid\":16842,\"Payload\":\"using inherited sockets from \\\"6;\\\"\",\"Severity\":5,\"time\":1393673379000}\n"
+    , "{\"Fields\":{\"tid\":0,\"connection\":8878},\"Pid\":16842,\"Payload\":\"using inherited sockets from \\\"6;\\\"\",\"Severity\":5,\"time\":1393673379000}\n"
+    , "tc12" // start to move away from the fragile string compare
+    , "tc13"
     , NULL
   };
 
@@ -816,7 +838,7 @@ static char* test_lpeg_date_time()
   int result = lsb_init(sb, NULL);
   mu_assert(result == 0, "lsb_init() received: %d %s", result, lsb_get_error(sb));
 
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 9; ++i) {
     result = process(sb, i);
     mu_assert(result == 0, "process() received: %d %s", result, lsb_get_error(sb));
   }
@@ -826,6 +848,7 @@ static char* test_lpeg_date_time()
 
   return NULL;
 }
+
 
 static char* test_lpeg_ip_address()
 {
@@ -847,14 +870,34 @@ static char* test_lpeg_ip_address()
 }
 
 
+static char* test_lpeg_mysql()
+{
+  lua_sandbox* sb = lsb_create(NULL, "lua/lpeg_mysql.lua", "../../modules", 8e6, 1e6, 63 * 1024);
+  mu_assert(sb, "lsb_create() received: NULL");
+
+  int result = lsb_init(sb, NULL);
+  mu_assert(result == 0, "lsb_init() received: %d %s", result, lsb_get_error(sb));
+
+  for (int i = 0; i < 3; ++i) {
+    result = process(sb, i);
+    mu_assert(result == 0, "process() received: %d %s", result, lsb_get_error(sb));
+  }
+
+  e = lsb_destroy(sb, NULL);
+  mu_assert(!e, "lsb_destroy() received: %s", e);
+
+  return NULL;
+}
+
+
 static char* test_lpeg_syslog()
 {
   const char* tests[] = {
-    "{\"msg\":\"(root) CMD (   cd \\/ && run-parts --report \\/etc\\/cron.hourly)\",\"timestamp\":1391955421000,\"syslogtag\":\"CRON[20758]:\",\"hostname\":\"trink-x230\"}\n"
-    , "{\"msg\":\"Kernel logging (proc) stopped.\",\"timestamp\":1392049319111.5369,\"syslogtag\":\"kernel:\",\"hostname\":\"trink-x230\"}\n"
-    , "{\"hostname\":\"trink-x230\",\"msg\":\"imklog 5.8.6, log source = \\/proc\\/kmsg started.\",\"timestamp\":1392049995407.9351,\"syslogtag\":\"kernel:\",\"pri\":{\"severity\":6,\"facility\":0}}\n"
-    , "{\"hostname\":\"trink-x230\",\"msg\":\"imklog 5.8.6, log source = \\/proc\\/kmsg started.\",\"timestamp\":1392021527000,\"syslogtag\":\"kernel:\",\"pri\":{\"severity\":6,\"facility\":0}}\n"
-    , "{\"syslogfacility\":0,\"$year\":\"2014\",\"source\":\"trink-x230\",\"syslogpriority-text\":6,\"syslogfacility-text\":0,\"msg\":\"imklog 5.8.6, log source = \\/proc\\/kmsg started.\",\"procid\":\"-\",\"structured-data\":\"-\",\"hostname\":\"trink-x230\",\"app-name\":\"kernel\",\"programname\":\"kernel\",\"$minute\":\"20\",\"$qhour\":\"01\",\"msgid\":\"imklog\",\"$hhour\":\"00\",\"pri-text\":0,\"fromhost-ip\":\"127.0.0.1\",\"$hour\":\"09\",\"pri\":{\"severity\":6,\"facility\":0},\"$day\":\"10\",\"$month\":\"02\",\"$now\":\"2014-02-10\",\"protocol-version\":\"0\",\"timegenerated\":1.392024053e+18,\"timestamp\":1392052853559.9338,\"syslogpriority\":6,\"iut\":\"1\",\"syslogtag\":\"kernel:\",\"fromhost\":\"trink-x230\"}\n"
+    "{\"msg\":\"(root) CMD (   cd \\/ && run-parts --report \\/etc\\/cron.hourly)\",\"timestamp\":1391955421000,\"syslogtag\":{\"pid\":20758,\"programname\":\"CRON\"},\"hostname\":\"trink-x230\"}\n"
+    , "{\"msg\":\"Kernel logging (proc) stopped.\",\"timestamp\":1392049319111.5369,\"syslogtag\":{\"programname\":\"kernel\"},\"hostname\":\"trink-x230\"}\n"
+    , "{\"hostname\":\"trink-x230\",\"msg\":\"imklog 5.8.6, log source = \\/proc\\/kmsg started.\",\"timestamp\":1392049995407.9351,\"syslogtag\":{\"programname\":\"kernel\"},\"pri\":{\"severity\":6,\"facility\":0}}\n"
+    , "{\"hostname\":\"trink-x230\",\"msg\":\"imklog 5.8.6, log source = \\/proc\\/kmsg started.\",\"timestamp\":1392021527000,\"syslogtag\":{\"programname\":\"kernel\"},\"pri\":{\"severity\":6,\"facility\":0}}\n"
+    , "{\"syslogfacility\":0,\"$year\":\"2014\",\"source\":\"trink-x230\",\"syslogpriority-text\":6,\"syslogfacility-text\":0,\"msg\":\"imklog 5.8.6, log source = \\/proc\\/kmsg started.\",\"procid\":\"-\",\"structured-data\":\"-\",\"hostname\":\"trink-x230\",\"app-name\":\"kernel\",\"programname\":\"kernel\",\"$minute\":\"20\",\"$qhour\":\"01\",\"msgid\":\"imklog\",\"$hhour\":\"00\",\"pri-text\":0,\"fromhost-ip\":\"127.0.0.1\",\"$hour\":\"09\",\"pri\":{\"severity\":6,\"facility\":0},\"$day\":\"10\",\"$month\":\"02\",\"$now\":\"2014-02-10\",\"protocol-version\":\"0\",\"timegenerated\":1.392024053e+18,\"timestamp\":1392052853559.9338,\"syslogpriority\":6,\"iut\":\"1\",\"syslogtag\":{\"programname\":\"kernel\"},\"fromhost\":\"trink-x230\"}\n"
     , NULL
   };
 
@@ -930,6 +973,7 @@ static char* test_serialize()
   return NULL;
 }
 
+
 static char* test_serialize_failure()
 {
   const char* output_file = "serialize_failure.preserve";
@@ -946,6 +990,7 @@ static char* test_serialize_failure()
   mu_assert(e, "lsb_destroy() received: no error");
   mu_assert(strcmp(e, expected) == 0, "lsb_destroy() received: %s", e);
   free(e);
+  e = NULL;
   mu_assert(file_exists(output_file) == 0, "output file was not cleaned up");
 
   return NULL;
@@ -968,7 +1013,214 @@ static char* test_serialize_noglobal()
   mu_assert(e, "lsb_destroy() received: no error");
   mu_assert(strcmp(e, expected) == 0, "lsb_destroy() received: %s", e);
   free(e);
+  e = NULL;
   mu_assert(file_exists(output_file) == 0, "output file was not cleaned up");
+
+  return NULL;
+}
+
+
+static char* test_bloom_filter_errors()
+{
+  const char* tests[] =
+  {
+    "process() lua/bloom_filter_errors.lua:9: bad argument #0 to 'new' (incorrect number of arguments)"
+    , "process() lua/bloom_filter_errors.lua:11: bad argument #1 to 'new' (number expected, got nil)"
+    , "process() lua/bloom_filter_errors.lua:13: bad argument #1 to 'new' (items must be > 1)"
+    , "process() lua/bloom_filter_errors.lua:15: bad argument #2 to 'new' (number expected, got nil)"
+    , "process() lua/bloom_filter_errors.lua:17: bad argument #2 to 'new' (probability must be between 0 and 1)"
+    , "process() lua/bloom_filter_errors.lua:19: bad argument #2 to 'new' (probability must be between 0 and 1)"
+    , "process() lua/bloom_filter_errors.lua:22: bad argument #-1 to 'add' (incorrect number of arguments)"
+    , "process() lua/bloom_filter_errors.lua:25: bad argument #1 to 'add' (must be a string or number)"
+    , "process() lua/bloom_filter_errors.lua:28: bad argument #-1 to 'query' (incorrect number of arguments)"
+    , "process() lua/bloom_filter_errors.lua:31: bad argument #1 to 'query' (must be a string or number)"
+    , "process() lua/bloom_filter_errors.lua:34: bad argument #-1 to 'clear' (incorrect number of arguments)"
+    , "process() lua/bloom_filter_errors.lua:37: bad argument #1 to 'fromstring' (string expected, got table)"
+    , "process() lua/bloom_filter_errors.lua:40: fromstring() bytes found: 23, expected 24"
+    , NULL
+  };
+
+  for (int i = 0; tests[i]; ++i) {
+    lua_sandbox* sb = lsb_create(NULL, "lua/bloom_filter_errors.lua", "../../modules",
+                                 32767, 1000, 128);
+    mu_assert(sb, "lsb_create() received: NULL");
+
+    int result = lsb_init(sb, NULL);
+    mu_assert(result == 0, "lsb_init() received: %d %s", result,
+              lsb_get_error(sb));
+
+    result = process(sb, i);
+    mu_assert(result == 1, "test: %d received: %d", i, result);
+
+    const char* le = lsb_get_error(sb);
+    mu_assert(le, "test: %d received NULL", i);
+    mu_assert(strcmp(tests[i], le) == 0, "test: %d received: %s", i, le);
+
+    e = lsb_destroy(sb, NULL);
+    mu_assert(!e, "lsb_destroy() received: %s", e);
+  }
+
+  return NULL;
+}
+
+
+static char* test_bloom_filter()
+{
+  const char* output_file = "bloom_filter.preserve";
+  const char* tests[] = {
+    "1"
+    , "2"
+    , "3"
+    , NULL
+  };
+
+  lua_sandbox* sb = lsb_create(NULL, "lua/bloom_filter.lua", "../../modules", 8e6, 1e6, 63 * 1024);
+  mu_assert(sb, "lsb_create() received: NULL");
+
+  int result = lsb_init(sb, NULL);
+  mu_assert(result == 0, "lsb_init() received: %d %s", result, lsb_get_error(sb));
+  lsb_add_function(sb, &write_output, "write");
+
+  int i = 0;
+  for (; tests[i]; ++i) {
+    result = process(sb, i);
+    mu_assert(result == 0, "process() received: %d %s", result, lsb_get_error(sb));
+    result = report(sb, 0);
+    mu_assert(result == 0, "report() received: %d", result);
+    mu_assert(strcmp(tests[i], written_data) == 0, "test: %d received: %s", i, written_data);
+  }
+
+  result = process(sb, 0);
+  mu_assert(result == 0, "process() received: %d %s", result, lsb_get_error(sb));
+  result = report(sb, 0);
+  mu_assert(result == 0, "report() received: %d", result);
+  mu_assert(strcmp(tests[i - 1], written_data) == 0, "test: %d received: %s", i, written_data); // count should remain the same
+
+  e = lsb_destroy(sb, output_file);
+  mu_assert(!e, "lsb_destroy() received: %s", e);
+
+  // re-load to test the preserved data
+  sb = lsb_create(NULL, "lua/bloom_filter.lua", "../../modules", 8e6, 1e6, 63 * 1024);
+  mu_assert(sb, "lsb_create() received: NULL");
+
+  result = lsb_init(sb, output_file);
+  mu_assert(result == 0, "lsb_init() received: %d %s", result, lsb_get_error(sb));
+  lsb_add_function(sb, &write_output, "write");
+
+  for (int i = 0; tests[i]; ++i) {
+    result = process(sb, i);
+    mu_assert(result == 0, "process() received: %d %s", result, lsb_get_error(sb));
+  }
+  result = report(sb, 0);
+  mu_assert(result == 0, "report() received: %d", result);
+  mu_assert(strcmp(tests[i - 1], written_data) == 0, "test: %d received: %s", i, written_data); // count should remain the same
+
+  // test clear
+  report(sb, 99);
+  process(sb, 0);
+  report(sb, 0);
+  mu_assert(strcmp("1", written_data) == 0, "test: clear received: %s", written_data);
+
+  e = lsb_destroy(sb, NULL);
+  mu_assert(!e, "lsb_destroy() received: %s", e);
+
+  return NULL;
+}
+
+
+static char* test_hyperloglog_errors()
+{
+  const char* tests[] =
+  {
+    "process() lua/hyperloglog_errors.lua:9: bad argument #0 to 'new' (incorrect number of arguments)"
+    , "process() lua/hyperloglog_errors.lua:12: bad argument #1 to 'add' (must be a string or number)"
+    , "process() lua/hyperloglog_errors.lua:15: bad argument #-1 to 'add' (incorrect number of arguments)"
+    , "process() lua/hyperloglog_errors.lua:18: bad argument #-1 to 'count' (incorrect number of arguments)"
+    , "process() lua/hyperloglog_errors.lua:21: bad argument #-1 to 'clear' (incorrect number of arguments)"
+    , "process() lua/hyperloglog_errors.lua:24: bad argument #1 to 'fromstring' (string expected, got table)"
+    , "process() lua/hyperloglog_errors.lua:27: fromstring() bytes found: 23, expected 12304"
+    , NULL
+  };
+
+  for (int i = 0; tests[i]; ++i) {
+    lua_sandbox* sb = lsb_create(NULL, "lua/hyperloglog_errors.lua", "../../modules",
+                                 32767, 1000, 128);
+    mu_assert(sb, "lsb_create() received: NULL");
+
+    int result = lsb_init(sb, NULL);
+    mu_assert(result == 0, "lsb_init() received: %d %s", result,
+              lsb_get_error(sb));
+
+    result = process(sb, i);
+    mu_assert(result == 1, "test: %d received: %d", i, result);
+
+    const char* le = lsb_get_error(sb);
+    mu_assert(le, "test: %d received NULL", i);
+    mu_assert(strcmp(tests[i], le) == 0, "test: %d received: %s", i, le);
+
+    e = lsb_destroy(sb, NULL);
+    mu_assert(!e, "lsb_destroy() received: %s", e);
+  }
+
+  return NULL;
+}
+
+
+static char* test_hyperloglog()
+{
+  const char* output_file = "hyperloglog.preserve";
+
+  lua_sandbox* sb = lsb_create(NULL, "lua/hyperloglog.lua", "../../modules", 8e6, 1e6, 63 * 1024);
+  mu_assert(sb, "lsb_create() received: NULL");
+
+  int result = lsb_init(sb, NULL);
+  mu_assert(result == 0, "lsb_init() received: %d %s", result, lsb_get_error(sb));
+  lsb_add_function(sb, &write_output, "write");
+
+
+  for (int i = 0; i < 100000; ++i) {
+    result = process(sb, i);
+    mu_assert(result == 0, "process() received: %d %s", result, lsb_get_error(sb));
+  }
+
+  result = report(sb, 0);
+  mu_assert(result == 0, "report() received: %d", result);
+  mu_assert(strcmp("100070", written_data) == 0, "test: initial received: %s", written_data); // count should remain the same
+
+  result = report(sb, 0);
+  mu_assert(result == 0, "report() received: %d", result);
+  mu_assert(strcmp("100070", written_data) == 0, "test: cache received: %s", written_data); // count should remain the same
+
+  e = lsb_destroy(sb, output_file);
+  mu_assert(!e, "lsb_destroy() received: %s", e);
+
+  // re-load to test the preserved data
+  sb = lsb_create(NULL, "lua/hyperloglog.lua", "../../modules", 8e6, 1e6, 63 * 1024);
+  mu_assert(sb, "lsb_create() received: NULL");
+
+  result = lsb_init(sb, output_file);
+  mu_assert(result == 0, "lsb_init() received: %d %s", result, lsb_get_error(sb));
+  lsb_add_function(sb, &write_output, "write");
+
+  result = report(sb, 0);
+  mu_assert(result == 0, "report() received: %d", result);
+  mu_assert(strcmp("100070", written_data) == 0, "test: reload received: %s", written_data); // count should remain the same
+
+  for (int i = 0; i < 100000; ++i) {
+    result = process(sb, i);
+    mu_assert(result == 0, "process() received: %d %s", result, lsb_get_error(sb));
+  }
+  result = report(sb, 0);
+  mu_assert(result == 0, "report() received: %d", result);
+  mu_assert(strcmp("100070", written_data) == 0, "test: data replay received: %s", written_data); // count should remain the same
+
+  // test clear
+  report(sb, 99);
+  report(sb, 0);
+  mu_assert(strcmp("0", written_data) == 0, "test: clear received: %s", written_data);
+
+  e = lsb_destroy(sb, NULL);
+  mu_assert(!e, "lsb_destroy() received: %s", e);
 
   return NULL;
 }
@@ -1003,7 +1255,7 @@ static char* benchmark_serialize()
 
   clock_t t = clock();
   for (int x = 0; x < iter; ++x) {
-    lua_sandbox* sb = lsb_create(NULL, "lua/serialize.lua", "../../modules", 32767, 1000,
+    lua_sandbox* sb = lsb_create(NULL, "lua/serialize.lua", "../../modules", 64000, 1000,
                                  1024);
     mu_assert(sb, "lsb_create() received: NULL");
 
@@ -1026,7 +1278,7 @@ static char* benchmark_deserialize()
 
   clock_t t = clock();
   for (int x = 0; x < iter; ++x) {
-    lua_sandbox* sb = lsb_create(NULL, "lua/serialize.lua", "../../modules", 32767, 1000,
+    lua_sandbox* sb = lsb_create(NULL, "lua/serialize.lua", "../../modules", 64000, 1000,
                                  1024);
     mu_assert(sb, "lsb_create() received: NULL");
 
@@ -1142,6 +1394,7 @@ static char* benchmark_table_output()
   return NULL;
 }
 
+
 static char* benchmark_cbuf_add()
 {
   int iter = 1000000;
@@ -1169,8 +1422,65 @@ static char* benchmark_cbuf_add()
 }
 
 
+static char* benchmark_bloom_filter_add()
+{
+  int iter = 1000000;
+
+  lua_sandbox* sb = lsb_create(NULL, "lua/bloom_filter_benchmark.lua", "../../modules", 1024 * 1024 * 8, 1000,
+                               1024 * 63);
+  mu_assert(sb, "lsb_create() received: NULL");
+  int result = lsb_init(sb, NULL);
+  mu_assert(result == 0, "lsb_init() received: %d %s", result,
+            lsb_get_error(sb));
+  lsb_add_function(sb, &write_output, "write");
+
+  clock_t t = clock();
+  for (int x = 0; x < iter; ++x) {
+    process(sb, x); // just testing add speed
+  }
+  t = clock() - t;
+  report(sb, 0);
+  mu_assert(strcmp("1000000", written_data) == 0, "received: %s", written_data);
+  mu_assert(lsb_get_state(sb) == LSB_RUNNING, "benchmark_bloom_filter_add() failed %s", lsb_get_error(sb));
+  e = lsb_destroy(sb, NULL);
+  mu_assert(!e, "lsb_destroy() received: %s", e);
+  printf("benchmark_bloom_filter_add() %g seconds\n", ((float)t) / CLOCKS_PER_SEC / iter);
+
+  return NULL;
+}
+
+
+static char* benchmark_hyperloglog_add()
+{
+  int iter = 1000000;
+
+  lua_sandbox* sb = lsb_create(NULL, "lua/hyperloglog.lua", "../../modules", 1024 * 1024 * 8, 1000,
+                               1024 * 63);
+  mu_assert(sb, "lsb_create() received: NULL");
+  int result = lsb_init(sb, NULL);
+  mu_assert(result == 0, "lsb_init() received: %d %s", result,
+            lsb_get_error(sb));
+  lsb_add_function(sb, &write_output, "write");
+
+  clock_t t = clock();
+  for (int x = 0; x < iter; ++x) {
+    process(sb, x); // just testing add speed
+  }
+  t = clock() - t;
+  report(sb, 0);
+  mu_assert(strcmp("1006268", written_data) == 0, "received: %s", written_data);
+  mu_assert(lsb_get_state(sb) == LSB_RUNNING, "benchmark_hyperloglog_add() failed %s", lsb_get_error(sb));
+  e = lsb_destroy(sb, NULL);
+  mu_assert(!e, "lsb_destroy() received: %s", e);
+  printf("benchmark_hyperloglog_add() %g seconds\n", ((float)t) / CLOCKS_PER_SEC / iter);
+
+  return NULL;
+}
+
+
 static char* all_tests()
 {
+
   mu_run_test(test_create_error);
   mu_run_test(test_init_error);
   mu_run_test(test_destroy_error);
@@ -1189,11 +1499,16 @@ static char* all_tests()
   mu_run_test(test_lpeg_clf);
   mu_run_test(test_lpeg_date_time);
   mu_run_test(test_lpeg_ip_address);
+  mu_run_test(test_lpeg_mysql);
   mu_run_test(test_lpeg_syslog);
   mu_run_test(test_util);
   mu_run_test(test_serialize);
   mu_run_test(test_serialize_failure);
   mu_run_test(test_serialize_noglobal);
+  mu_run_test(test_bloom_filter_errors);
+  mu_run_test(test_bloom_filter);
+  mu_run_test(test_hyperloglog_errors);
+  mu_run_test(test_hyperloglog);
 
   mu_run_test(benchmark_counter);
   mu_run_test(benchmark_serialize);
@@ -1203,6 +1518,9 @@ static char* all_tests()
   mu_run_test(benchmark_cbuf_output);
   mu_run_test(benchmark_table_output);
   mu_run_test(benchmark_cbuf_add);
+  mu_run_test(benchmark_bloom_filter_add);
+  mu_run_test(benchmark_hyperloglog_add);
+
   return NULL;
 }
 

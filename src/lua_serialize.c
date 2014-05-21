@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/// @brief Sandbox serialization implementation @file
+/** @brief Sandbox serialization implementation @file */
 
 #include <lualib.h>
 #include <lauxlib.h>
@@ -13,12 +13,22 @@
 #include <string.h>
 #include "lua_serialize.h"
 #include "lua_circular_buffer.h"
+#include "lua_bloom_filter.h"
+#include "lua_hyperloglog.h"
 
 const char* not_a_number = "nan";
 
 int preserve_global_data(lua_sandbox* lsb, const char* data_file)
 {
   static const char* G = "_G";
+
+  // make sure the string library is loaded before we start
+  lua_getglobal(lsb->lua, LUA_STRLIBNAME);
+  if (!lua_istable(lsb->lua, -1)) {
+    load_library(lsb->lua, LUA_STRLIBNAME, luaopen_string, disable_none);
+  }
+  lua_pop(lsb->lua, 1); // Remove string table.
+
   lua_getglobal(lsb->lua, G);
   if (!lua_istable(lsb->lua, -1)) {
     snprintf(lsb->error_message, LSB_ERROR_SIZE,
@@ -40,7 +50,20 @@ int preserve_global_data(lua_sandbox* lsb, const char* data_file)
   serialization_data data;
   data.fh = fh;
   data.keys.maxsize = 0;
-  lsb->output.maxsize = 0; // clear output limit
+
+// Clear the sandbox limits during preservation.
+#ifdef LUA_JIT
+  lua_gc(lsb->lua, LUA_GCSETMEMLIMIT, 0);
+#else
+//  unsigned limit = lsb->usage[LSB_UT_MEMORY][LSB_US_LIMIT];
+  lsb->usage[LSB_UT_MEMORY][LSB_US_LIMIT] = 0;
+#endif
+  lua_sethook(lsb->lua, instruction_manager, 0, 0);
+//  size_t cur_output_size = lsb->output.size;
+//  size_t max_output_size = lsb->output.maxsize;
+  lsb->output.maxsize = 0;
+// end clear
+
   data.keys.size = OUTPUT_SIZE;
   data.keys.pos = 0;
   data.keys.data = malloc(data.keys.size);
@@ -71,6 +94,30 @@ int preserve_global_data(lua_sandbox* lsb, const char* data_file)
   if (result != 0) {
     remove(data_file);
   }
+
+// Uncomment if we start preserving state when not destroying the sandbox
+/*
+// Restore the sandbox limits after preservation
+#ifdef LUA_JIT
+  lua_gc(lsb->lua, LUA_GCSETMEMLIMIT,
+         lsb->usage[LSB_UT_MEMORY][LSB_US_LIMIT]);
+#else
+  lua_gc(lsb->lua, LUA_GCCOLLECT, 0);
+  lsb->usage[LSB_UT_MEMORY][LSB_US_LIMIT] = limit;
+  lsb->usage[LSB_UT_MEMORY][LSB_US_MAXIMUM] =
+    lsb->usage[LSB_UT_MEMORY][LSB_US_CURRENT];
+#endif
+  lsb->output.maxsize = max_output_size;
+  lsb->output.pos = 0;
+  if (lsb->output.size > cur_output_size) {
+    void* ptr = realloc(lsb->output.data, cur_output_size);
+    if (!ptr) return 1;
+    lsb->output.data = ptr;
+    lsb->output.size = cur_output_size;
+  }
+// end restore
+*/
+
   return result;
 }
 
@@ -181,10 +228,6 @@ int serialize_data(lua_sandbox* lsb, int index, output_data* output)
     // but for clarity it is incrementally cleaned up anyway.
     lua_checkstack(lsb->lua, 4);
     lua_getglobal(lsb->lua, LUA_STRLIBNAME);
-    if (!lua_istable(lsb->lua, -1)) {
-      lua_pop(lsb->lua, 1); // Remove nil string table.
-      load_library(lsb->lua, LUA_STRLIBNAME, luaopen_string, disable_none);
-    }
     lua_getfield(lsb->lua, -1, "format");
     if (!lua_isfunction(lsb->lua, -1)) {
       snprintf(lsb->error_message, LSB_ERROR_SIZE,
@@ -230,19 +273,19 @@ int serialize_data(lua_sandbox* lsb, int index, output_data* output)
 }
 
 
-const char* userdata_type(lua_State* lua, void* ud, int index)
+void* userdata_type(lua_State* lua, int index, const char* tname)
 {
-  const char* table = NULL;
-  if (ud == NULL) return table;
-
-  if (lua_getmetatable(lua, index)) {
-    lua_getfield(lua, LUA_REGISTRYINDEX, lsb_circular_buffer);
-    if (lua_rawequal(lua, -1, -2)) {
-      table = lsb_circular_buffer;
+  void* ud = lua_touserdata(lua, index);
+  if (ud != NULL) {
+    if (lua_getmetatable(lua, index)) {
+      lua_getfield(lua, LUA_REGISTRYINDEX, tname);
+      if (!lua_rawequal(lua, -1, -2)) {
+        ud = NULL;
+      }
     }
   }
   lua_pop(lua, 2); // metatable and field
-  return table;
+  return ud;
 }
 
 
@@ -253,6 +296,7 @@ int serialize_kvp(lua_sandbox* lsb, serialization_data* data, size_t parent)
   if (ignore_value_type(lsb, data, vindex)) {
     return 0;
   }
+
   if (serialize_data(lsb, kindex, &lsb->output)) {
     return 1;
   }
@@ -283,8 +327,8 @@ int serialize_kvp(lua_sandbox* lsb, serialization_data* data, size_t parent)
       fprintf(data->fh, "%s\n", data->keys.data + seen->name_pos);
     }
   } else if (lua_type(lsb->lua, vindex) == LUA_TUSERDATA) {
-    void* ud = lua_touserdata(lsb->lua, vindex);
-    if (lsb_circular_buffer == userdata_type(lsb->lua, ud, vindex)) {
+    void* ud = NULL;
+    if ((ud = userdata_type(lsb->lua, vindex, lsb_circular_buffer))) {
       table_ref* seen = find_table_ref(&data->tables, ud);
       if (seen == NULL) {
         seen = add_table_ref(&data->tables, ud, pos);
@@ -299,7 +343,63 @@ int serialize_kvp(lua_sandbox* lsb, serialization_data* data, size_t parent)
           }
         } else {
           snprintf(lsb->error_message, LSB_ERROR_SIZE,
-                   "preserve table out of memory");
+                   "serialize_circular_buffer out of memory");
+          return 1;
+        }
+      } else {
+        fprintf(data->fh, "%s = ", data->keys.data + pos);
+        data->keys.pos = pos;
+        fprintf(data->fh, "%s\n", data->keys.data +
+                seen->name_pos);
+      }
+    } else if ((ud = userdata_type(lsb->lua, vindex, lsb_bloom_filter))) {
+      table_ref* seen = find_table_ref(&data->tables, ud);
+      if (seen == NULL) {
+        seen = add_table_ref(&data->tables, ud, pos);
+        if (seen != NULL) {
+          data->keys.pos += 1;
+          result = serialize_bloom_filter(data->keys.data + pos,
+                                          (bloom_filter*)ud,
+                                          &lsb->output);
+          if (result == 0) {
+            size_t n = fwrite(lsb->output.data, 1, lsb->output.pos, data->fh);
+            if (n != lsb->output.pos) {
+              snprintf(lsb->error_message, LSB_ERROR_SIZE,
+                       "serialize_bloom_filter failed");
+              return 1;
+            }
+          }
+        } else {
+          snprintf(lsb->error_message, LSB_ERROR_SIZE,
+                   "serialize_bloom_filter out of memory");
+          return 1;
+        }
+      } else {
+        fprintf(data->fh, "%s = ", data->keys.data + pos);
+        data->keys.pos = pos;
+        fprintf(data->fh, "%s\n", data->keys.data +
+                seen->name_pos);
+      }
+    } else if ((ud = userdata_type(lsb->lua, vindex, lsb_hyperloglog))) {
+      table_ref* seen = find_table_ref(&data->tables, ud);
+      if (seen == NULL) {
+        seen = add_table_ref(&data->tables, ud, pos);
+        if (seen != NULL) {
+          data->keys.pos += 1;
+          result = serialize_hyperloglog(data->keys.data + pos,
+                                         (hyperloglog*)ud,
+                                         &lsb->output);
+          if (result == 0) {
+            size_t n = fwrite(lsb->output.data, 1, lsb->output.pos, data->fh);
+            if (n != lsb->output.pos) {
+              snprintf(lsb->error_message, LSB_ERROR_SIZE,
+                       "serialize_hyperloglog failed");
+              return 1;
+            }
+          }
+        } else {
+          snprintf(lsb->error_message, LSB_ERROR_SIZE,
+                   "serialize_hyperloglog out of memory");
           return 1;
         }
       } else {
@@ -364,7 +464,6 @@ table_ref* add_table_ref(table_ref_array* tra, const void* ptr, size_t name_pos)
 
 int ignore_value_type(lua_sandbox* lsb, serialization_data* data, int index)
 {
-  void* ud = NULL;
   switch (lua_type(lsb->lua, index)) {
   case LUA_TTABLE:
     if (lua_getmetatable(lsb->lua, index) != 0) {
@@ -376,8 +475,9 @@ int ignore_value_type(lua_sandbox* lsb, serialization_data* data, int index)
     }
     break;
   case LUA_TUSERDATA:
-    ud = lua_touserdata(lsb->lua, index);
-    if ((lsb_circular_buffer != userdata_type(lsb->lua, ud, index))) {
+    if (!userdata_type(lsb->lua, index, lsb_circular_buffer) &&
+        !userdata_type(lsb->lua, index, lsb_bloom_filter) &&
+        !userdata_type(lsb->lua, index, lsb_hyperloglog)) {
       return 1;
     }
     break;
@@ -425,5 +525,31 @@ int restore_global_data(lua_sandbox* lsb, const char* data_file)
   lsb->usage[LSB_UT_MEMORY][LSB_US_MAXIMUM] =
     lsb->usage[LSB_UT_MEMORY][LSB_US_CURRENT];
 #endif
+  return 0;
+}
+
+
+int serialize_binary(const void* src, size_t len, output_data* output)
+{
+  const char* uc = (const char*)src;
+  for (unsigned i = 0; i < len; ++i) {
+    switch (uc[i]) {
+    case '\n':
+      if (appends(output, "\\n")) return 1;
+      break;
+    case '\r':
+      if (appends(output, "\\r")) return 1;
+      break;
+    case '"':
+      if (appends(output, "\\\"")) return 1;
+      break;
+    case '\\':
+      if (appends(output, "\\\\")) return 1;
+      break;
+    default:
+      if (appendc(output, uc[i])) return 1;
+      break;
+    }
+  }
   return 0;
 }

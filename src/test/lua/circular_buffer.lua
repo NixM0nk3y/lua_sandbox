@@ -11,6 +11,7 @@ local ADD_COL = data:set_header(1, "Add column")
 local SET_COL = data:set_header(2, "Set column", "count")
 local GET_COL = data:set_header(3, "Get column", "count", "sum")
 
+
 function process(ts)
     if data:add(ts, ADD_COL, 1) then
         data:set(ts, GET_COL, data:get(ts, ADD_COL))
@@ -51,8 +52,12 @@ function report(tc)
         if 4 ~= c then
             error(sting.format("active_rows = %d", c))
         end
+        t, c = stats:compute("variance", 1)
+        if 1.25 ~= t then
+            error(string.format("no range variance = %G", t))
+        end
         t, c = stats:compute("sd", 1)
-        if math.abs(math.sqrt(1.25)) ~= t then
+        if math.sqrt(1.25) ~= t then
             error(string.format("no range sd = %G", t))
         end
         if 4 ~= c then
@@ -162,6 +167,88 @@ function report(tc)
         if nan == nan then
             error(string.format("min is a number %G", m))
         end
-
+    elseif tc == 8 then
+        local cb = circular_buffer.new(20,1,1)
+        local u, p = cb:mannwhitneyu(1, 0e9, 9e9, 10e9, 19e9)
+        if u or p then
+            error("all the same values should return nil results")
+        end
+    elseif tc == 9 then -- default
+        local cb = circular_buffer.new(40,1,1)
+        local data = {15309,14092,13661,13412,14205,15042,14142,13820,14917,13953,14320,14472,15133,13790,14539,14129,14363,14202,13841,13610,13759,14428,14851,13838,13819,14468,14989,15557,14380,13500,14818,14632,13631,14663,14532,14188,14537,14109,13925,15022}
+        for i,v in ipairs(data) do
+            cb:set(i*1e9, 1, v)
+        end
+        local u, p = cb:mannwhitneyu(1, 1e9, 20e9, 21e9, 40e9)
+        if u ~= 171 or math.floor(p * 100000) ~=  22037 then
+            error(string.format("u is %g p is %g", u, p))
+        end
+    elseif tc == 10 then -- no continuity correction
+        local cb = circular_buffer.new(40,1,1)
+        local data = {15309,14092,13661,13412,14205,15042,14142,13820,14917,13953,14320,14472,15133,13790,14539,14129,14363,14202,13841,13610,13759,14428,14851,13838,13819,14468,14989,15557,14380,13500,14818,14632,13631,14663,14532,14188,14537,14109,13925,15022}
+        for i,v in ipairs(data) do
+            cb:set(i*1e9, 1, v)
+        end
+        local u, p = cb:mannwhitneyu(1, 1e9, 20e9, 21e9, 40e9, false)
+        if u ~= 171 or math.floor(p * 100000) ~=  21638 then
+            error(string.format("u is %g p is %g", u, p))
+        end
+    elseif tc == 11 then -- tie correction
+        local cb = circular_buffer.new(40,1,1)
+        local data = {15309,14092,13661,13412,14205,15042,14142,13820,14917,13953,14320,14472,15133,13790,14539,14129,14363,14202,13841,13610,13759,14428,14851,13838,13819,14468,14989,15557,14380,13500,14818,14632,13631,14663,14532,14188,14537,14109,13925,15309}
+        for i,v in ipairs(data) do
+            cb:set(i*1e9, 1, v)
+        end
+        local u, p = cb:mannwhitneyu(1, 1e9, 20e9, 21e9, 40e9)
+        if u ~= 168.5 or math.floor(p * 100000) ~=  20084 then
+            error(string.format("u is %g p is %g", u, p))
+        end
+    elseif tc == 12 then
+        local cb = circular_buffer.new(40,1,1)
+        local u, p = cb:mannwhitneyu(1, 41e9, 60e9, 61e9, 80e9)
+        if u or p then
+            error("times outside of buffer should return nil results")
+        end
+    elseif tc == 13 then
+        local cb = circular_buffer.new(10,1,1)
+        local data = {1,1,1,1,1,1,1,1,1,1}
+        for i,v in ipairs(data) do
+            cb:set(i*1e9, 1, v)
+        end
+        local u, p = cb:mannwhitneyu(1, 1e9, 5e9, 6e9, 10e9)
+        if u or p then
+            error("all the same values should return nil results")
+        end
+    elseif tc == 14 then
+        local cb = circular_buffer.new(10,1,1)
+        local rows, cols, spr = cb:get_configuration()
+        assert(rows == 10, "invalid rows")
+        assert(cols == 1 , "invalid columns")
+        assert(spr  == 1 , "invalid seconds_per_row")
+    elseif tc == 15 then
+        local cb = circular_buffer.new(10,1,1)
+        local args = {"widget", "count", "max"}
+        local col = cb:set_header(1, args[1], args[2], args[3])
+        assert(col == 1, "invalid column")
+        local n, u, m = cb:get_header(col)
+        assert(n == args[1], "invalid name")
+        assert(u == args[2], "invalid unit")
+        assert(m == args[3], "invalid aggregation_method")
+    elseif tc == 16 then
+        local cb = circular_buffer.new(10,1,1)
+        assert(not cb:get(10*1e9, 1), "value found beyond the end of the buffer")
+        cb:set(20*1e9, 1, 1)
+        assert(not cb:get(10*1e9, 1), "value found beyond the start of the buffer")
+    elseif tc == 17 then -- default
+        local cb = circular_buffer.new(120,1,1)
+        local data = {1,1,1,2,1,3,3,6,4,0/0,0/0,0/0,1,0/0,2,0/0,0/0,0/0,0/0,0/0,1,5,1,0/0,1,1,0/0,0/0,3,4,1,1,1,0/0,7,1,0/0,6,0/0,0/0,1,3,4,3,0/0,1,5,0/0,1,0/0,0/0,1,6,4,0/0,4,2,6,4,3,2,6,2,11,2,0/0,2,0/0,2,0/0,0/0,0/0,4,0/0,3,2,0/0,0/0,1,2,2,2,1,1,0/0,3,0/0,4,0/0,0/0,2,3,5,6,3,1,0/0,0/0,3,2,0/0,4,1,2,1,1,0/0,0/0,0/0,0/0,0/0,0/0,0/0,7,1,1,2,1,0/0,0/0}
+        for i,v in ipairs(data) do
+            cb:set(i*1e9, 1, v)
+        end
+        local u1 = cb:mannwhitneyu(1, 61e9, 120e9, 1e9, 60e9)
+        local u2 = cb:mannwhitneyu(1, 1e9, 60e9, 61e9, 120e9)
+        if u1 + u2 ~= 3600 then
+            error(string.format("u1 is %g u2 is %g %g", u1, u2, maxu))
+        end
     end
 end

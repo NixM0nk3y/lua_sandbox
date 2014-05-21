@@ -61,6 +61,19 @@ double **get** (nanoseconds, column)
 The value at the specifed row/column or nil if the time was outside the range of the buffer.
 
 ____
+double, double, double **get_configuration** ()
+
+*Arguments*
+- none
+
+*Return*
+
+The circular buffer dimension values specified in the constructor.
+- rows
+- columns
+- seconds_per_row
+
+____
 int **set_header** (column, name, unit, aggregation_method)
 
 *Arguments*
@@ -82,10 +95,23 @@ int **set_header** (column, name, unit, aggregation_method)
 The column number passed into the function.
 
 ____
+string, string, string **get_header** (column)
+
+*Arguments*
+- column (unsigned) The column number of the header information to be retrieved.
+
+*Return*
+
+The current values of specified header column.
+- name
+- unit
+- aggregation_method
+
+____
 double, int **compute** (function, column, start, end)
 
 *Arguments*
-- function (string) The name of the compute function (sum|avg|sd|min|max).
+- function (string) The name of the compute function (sum|avg|sd|min|max|variance).
 - column (unsigned) The column that the computation is performed against.
 - start (optional - unsigned) The number of nanosecond since the UNIX epoch. Sets the
     start time of the computation range; if nil the buffer's start time is used.
@@ -97,6 +123,30 @@ double, int **compute** (function, column, start, end)
 
 - The result of the computation for the specifed column over the given range or nil if the range fell outside of the buffer.
 - The number of rows that contained a valid numeric value.
+
+____
+double, double **mannwhitneyu** (column, start_x, end_x, start_y, end_y, use_continuity)
+
+Computes the Mann-Whitney rank test on samples x and y.
+
+*Arguments*
+- column (unsigned) The column that the computation is performed against.
+- start_1 (unsigned) The number of nanosecond since the UNIX epoch.
+- end_1 (unsigned) The number of nanosecond since the UNIX epoch. The end time must be greater than or equal to the start time.
+- start_2 (unsigned).
+- end_2 (unsigned).
+- use_continuity (optional - bool) Whether a continuity correction (1/2) should be taken into account (default: true).
+
+*Returns* (nil if the range fell outside the buffer)
+
+- U_1 Mann-Whitney statistic.
+- One-sided p-value assuming a asymptotic normal distribution.
+
+**Note:** Use only when the number of observation in each sample is > 20 and you have 2 independent samples of ranks. 
+Mann-Whitney U is significant if the u-obtained is LESS THAN or equal to the critical value of U.
+
+This test corrects for ties and by default uses a continuity correction. The reported p-value is for a one-sided
+hypothesis, to get the two-sided p-value multiply the returned p-value by 2.
 
 ____
 double **current_time** ()

@@ -6,6 +6,7 @@
 
 /// @brief Lua circular buffer implementation @file
 
+#include "cephes.h"
 #include "lua_circular_buffer.h"
 #include "lua_serialize.h"
 
@@ -25,7 +26,6 @@ const char* lsb_circular_buffer_table = "circular_buffer";
 #define COLUMN_NAME_SIZE 16
 #define UNIT_LABEL_SIZE 8
 
-static const time_t seconds_in_minute = 60;
 static const time_t seconds_in_day = 60 * 60 * 24;
 
 static const char* column_aggregation_methods[] = { "sum", "min", "max", "none",
@@ -195,7 +195,8 @@ static int check_row(circular_buffer* cb, double ns, int advance)
     clear_rows(cb, row_delta);
     cb->current_time = t;
     cb->current_row = row;
-  } else if (abs(row_delta) >= (int)cb->rows) {
+  } else if (requested_row > current_row
+             || abs(row_delta) >= (int)cb->rows) {
     return -1;
   }
   return row;
@@ -308,6 +309,17 @@ static int circular_buffer_get(lua_State* lua)
 }
 
 
+static int circular_buffer_get_configuration(lua_State* lua)
+{
+  circular_buffer* cb = check_circular_buffer(lua, 1);
+
+  lua_pushnumber(lua, cb->rows);
+  lua_pushnumber(lua, cb->columns);
+  lua_pushnumber(lua, cb->seconds_per_row);
+  return 3;
+}
+
+
 static int circular_buffer_set(lua_State* lua)
 {
   circular_buffer* cb = check_circular_buffer(lua, 4);
@@ -357,10 +369,10 @@ static int circular_buffer_set(lua_State* lua)
 
 static int circular_buffer_set_header(lua_State* lua)
 {
-  circular_buffer* cb                 = check_circular_buffer(lua, 3);
-  int column                          = check_column(lua, cb, 2);
-  const char* name                    = luaL_checkstring(lua, 3);
-  const char* unit                    = luaL_optstring(lua, 4, default_unit);
+  circular_buffer* cb             = check_circular_buffer(lua, 3);
+  int column                      = check_column(lua, cb, 2);
+  const char* name                = luaL_checkstring(lua, 3);
+  const char* unit                = luaL_optstring(lua, 4, default_unit);
   cb->headers[column].aggregation = luaL_checkoption(lua, 5, "sum",
                                                      column_aggregation_methods);
 
@@ -381,6 +393,19 @@ static int circular_buffer_set_header(lua_State* lua)
 
   lua_pushinteger(lua, column + 1); // return the 1 based Lua column
   return 1;
+}
+
+
+static int circular_buffer_get_header(lua_State* lua)
+{
+  circular_buffer* cb = check_circular_buffer(lua, 2);
+  int column          = check_column(lua, cb, 2);
+
+  lua_pushstring(lua, cb->headers[column].name);
+  lua_pushstring(lua, cb->headers[column].unit);
+  lua_pushstring(lua,
+                 column_aggregation_methods[cb->headers[column].aggregation]);
+  return 3;
 }
 
 
@@ -432,9 +457,9 @@ static double compute_avg(circular_buffer* cb, unsigned column,
 }
 
 
-static double compute_sd(circular_buffer* cb, unsigned column,
-                         unsigned start_row, unsigned end_row,
-                         unsigned* active_rows)
+static double compute_variance(circular_buffer* cb, unsigned column,
+                               unsigned start_row, unsigned end_row,
+                               unsigned* active_rows)
 {
   double avg = compute_avg(cb, column, start_row, end_row, active_rows);
   if (isnan(avg)) return avg;
@@ -455,7 +480,15 @@ static double compute_sd(circular_buffer* cb, unsigned column,
     }
   }
   while (row++ != end_row);
-  return sqrt(sum_squares / row_count);
+  return sum_squares / row_count;
+}
+
+
+static double compute_sd(circular_buffer* cb, unsigned column,
+                         unsigned start_row, unsigned end_row,
+                         unsigned* active_rows)
+{
+  return sqrt(compute_variance(cb, column, start_row, end_row, active_rows));
 }
 
 
@@ -515,7 +548,8 @@ static double compute_max(circular_buffer* cb, unsigned column,
 
 static int circular_buffer_compute(lua_State* lua)
 {
-  static const char* functions[] = { "sum", "avg", "sd", "min", "max", NULL };
+  static const char* functions[] = { "sum", "avg", "sd", "min", "max",
+    "variance", NULL };
   circular_buffer* cb  = check_circular_buffer(lua, 3);
   int function         = luaL_checkoption(lua, 2, NULL, functions);
   int column           = check_column(lua, cb, 3);
@@ -551,12 +585,165 @@ static int circular_buffer_compute(lua_State* lua)
   case 4:
     result = compute_max(cb, column, start_row, end_row, &active_rows);
     break;
+  case 5:
+    result = compute_variance(cb, column, start_row, end_row, &active_rows);
+    break;
   }
 
   lua_pushnumber(lua, result);
   lua_pushinteger(lua, active_rows);
   return 2;
 }
+
+
+static void append_values(circular_buffer* cb, unsigned column,
+                          unsigned start_row, unsigned end_row,
+                          double ranked[])
+{
+  unsigned row = start_row;
+  unsigned x = 0;
+  do {
+    if (row == cb->rows) {
+      row = 0;
+    }
+    ranked[x++] = cb->values[(row * cb->columns) + column];
+  }
+  while (row++ != end_row);
+}
+
+
+static double rank_data(double* sorted[], size_t ranked_size)
+{
+  size_t next = 0, dupe_count = 0;
+  double tie_correction = 0;
+  for (size_t i = 0; i < ranked_size; ++i) {
+    next = i + 1;
+    if (i == ranked_size - 1 || (!(isnan(*sorted[i]) && isnan(*sorted[next]))
+                                 && *sorted[i] != *sorted[next]))  {
+      if (dupe_count) {
+        double tie_rank = next - 0.5 * dupe_count;
+        for (size_t j = i - dupe_count; j < next; ++j) {
+          *sorted[j] = tie_rank;
+        }
+        ++dupe_count;
+        tie_correction += pow(dupe_count, 3.0) - dupe_count;
+        dupe_count = 0;
+      } else {
+        *sorted[i] = next;
+      }
+    } else {
+      ++dupe_count;
+    }
+  }
+  tie_correction = 1.0 - tie_correction / (pow(ranked_size, 3.0) - ranked_size);
+  return tie_correction;
+}
+
+
+static int double_pp_compare(const void* a, const void* b)
+{
+  double* d1 = *(double**)a;
+  double* d2 = *(double**)b;
+
+  if (isnan(*d1) && isnan(*d2)) return 0;
+  if (isnan(*d1)) return -1;
+  if (isnan(*d2)) return 1;
+
+  if (*d1 < *d2) return -1;
+  if (*d1 == *d2) return 0;
+  return 1;
+}
+
+// http://en.wikipedia.org/wiki/Mann-Whitney_U_test
+static int circular_buffer_mannwhitneyu(lua_State* lua)
+{
+  circular_buffer* cb  = check_circular_buffer(lua, 6);
+  int n =  lua_gettop(lua);
+  luaL_argcheck(lua, n <= 7, 0, "too many arguments");
+  int column           = check_column(lua, cb, 2);
+
+  double start_1 = luaL_checknumber(lua, 3);
+  double end_1  = luaL_checknumber(lua, 4);
+  luaL_argcheck(lua, end_1 >= start_1, 4, "end_1 must be >= start_1");
+
+  double start_2 = luaL_checknumber(lua, 5);
+  double end_2   = luaL_checknumber(lua, 6);
+  luaL_argcheck(lua, end_2 >= start_2, 6, "end_2 must be >= start_2");
+  luaL_argcheck(lua, end_1 < start_2 || end_2 < start_1, 4, "ranges must not overlap");
+
+  int use_continuity = 1; // optional argument
+  if (7 == n) {
+    luaL_argcheck(lua, lua_isboolean(lua, n), n, "use_continuity must be a boolean");
+    use_continuity = lua_toboolean(lua, n);
+  }
+
+  int start_1_row = check_row(cb, start_1, 0);
+  int end_1_row   = check_row(cb, end_1, 0);
+  if (-1 == start_1_row  || -1 == end_1_row) {
+    return 0;
+  }
+  int start_2_row = check_row(cb, start_2, 0);
+  int end_2_row   = check_row(cb, end_2, 0);
+  if (-1 == start_2_row  || -1 == end_2_row) {
+    return 0;
+  }
+
+  size_t n1 = ((end_1 - start_1) / 1e9 / cb->seconds_per_row) + 1;
+  size_t n2 = ((end_2 - start_2) / 1e9 / cb->seconds_per_row) + 1;
+  size_t ranked_size = n1 + n2;
+  // note: user could temporarily exceed the sandbox memory limit here without
+  // detection
+  double* ranked = (double*)malloc(sizeof(double) * ranked_size);
+  if (!ranked) {
+    return 0;
+  }
+  append_values(cb, column, start_1_row, end_1_row, ranked);
+  append_values(cb, column, start_2_row, end_2_row, ranked + n1);
+
+  double** sorted = (double**)malloc(sizeof(double*) * ranked_size);
+  if (!sorted) {
+    free(ranked);
+    return 0;
+  }
+  for (size_t i = 0; i < ranked_size; ++i) {
+    sorted[i] = ranked + i;
+  }
+
+  qsort(sorted, ranked_size, sizeof(double*), double_pp_compare);
+  double tie_correction = rank_data(sorted, ranked_size);
+  free(sorted);
+  if (!tie_correction) { // data set values are all identical
+    free(ranked);
+    return 0;
+  }
+
+  double sum = 0;
+  for (size_t i = 0; i < n1; ++i) {
+    if (!isnan(ranked[i])) {
+      sum += ranked[i];
+    }
+  }
+  free(ranked);
+
+  double u1 = sum - (n1 * (n1 + 1)) / 2.0;
+  double u2 = n1 * n2 - u1;
+  double lu = u1 > u2 ? u1 : u2;
+
+  double z = 0;
+  double sd = sqrt(tie_correction * n1 * n2 * (n1 + n2 + 1) / 12.0);
+  if (use_continuity) {
+    // normal approximation for prob calc with continuity correction
+    z = fabs((lu - 0.5 - n1 * n2 / 2.0) / sd);
+  } else {
+    // normal approximation for prob calc
+    z = fabs((lu - n1 * n2 / 2.0) / sd);
+  }
+
+  lua_pushnumber(lua, u1);
+  lua_pushnumber(lua, ndtr(-z));
+  return 2;
+}
+
 
 static int circular_buffer_current_time(lua_State* lua)
 {
@@ -884,9 +1071,12 @@ static const struct luaL_reg circular_bufferlib_m[] =
 {
   { "add", circular_buffer_add }
   , { "get", circular_buffer_get }
+  , { "get_configuration", circular_buffer_get_configuration }
   , { "set", circular_buffer_set }
   , { "set_header", circular_buffer_set_header }
+  , { "get_header", circular_buffer_get_header }
   , { "compute", circular_buffer_compute }
+  , { "mannwhitneyu", circular_buffer_mannwhitneyu }
   , { "current_time", circular_buffer_current_time }
   , { "format", circular_buffer_format }
   , { "fromstring", circular_buffer_fromstring } // used for data restoration
